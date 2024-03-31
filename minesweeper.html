@@ -1,0 +1,277 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Minesweeper</title>
+    <style>
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(var(--cols, 10), 30px);
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #999;
+            text-align: center;
+            line-height: 30px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .revealed-empty {
+            background-color: #ddd;
+        }
+
+        .flagged {
+            background-color: #ffcc00;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <label for="mode">Select Mode:</label>
+        <select id="mode">
+            <option value="beginner">Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="expert">Expert</option>
+            <option value="custom">Custom</option>
+        </select>
+        <div id="custom-options" style="display: none;">
+            <label for="customRows">Height:</label>
+            <input type="number" id="customRows" value="10">
+            <label for="customCols">Width:</label>
+            <input type="number" id="customCols" value="10">
+            <label for="customMines">Mines:</label>
+            <input type="number" id="customMines" value="10">
+        </div>
+        <button onclick="startGame()">Start</button>
+        <span id="timer" style="display: none;">Time: 0s</span>
+    </div>
+    <div class="grid" id="grid"></div>
+    <script>
+        let modeSelect = document.getElementById('mode');
+        let customOptions = document.getElementById('custom-options');
+        let customRowsInput = document.getElementById('customRows');
+        let customColsInput = document.getElementById('customCols');
+        let customMinesInput = document.getElementById('customMines');
+        let timerSpan = document.getElementById('timer');
+        let timerInterval;
+
+        let rows = 10;
+        let cols = 10;
+        let numMines = 10;
+        let startTime;
+        let elapsedTime = 0;
+        let firstClick = true;
+
+        let grid = [];
+        let revealed = [];
+        let flagged = [];
+
+        function startGame() {
+            let selectedMode = modeSelect.value;
+            if (selectedMode === 'beginner') {
+                rows = 9;
+                cols = 9;
+                numMines = 10;
+            } else if (selectedMode === 'intermediate') {
+                rows = 16;
+                cols = 16;
+                numMines = 40;
+            } else if (selectedMode === 'expert') {
+                rows = 16;
+                cols = 30;
+                numMines = 99;
+            } else if (selectedMode === 'custom') {
+                rows = parseInt(customRowsInput.value);
+                cols = parseInt(customColsInput.value);
+                numMines = parseInt(customMinesInput.value);
+            }
+            let gridContainer = document.getElementById('grid');
+            gridContainer.style.setProperty('--cols', cols);
+            gridContainer.innerHTML = '';
+            grid = [];
+            revealed = [];
+            flagged = [];
+            firstClick = true;
+            createGrid();
+        }
+
+        function createGrid() {
+            for (let i = 0; i < rows; i++) {
+                let row = [];
+                let revealRow = [];
+                let flagRow = [];
+                for (let j = 0; j < cols; j++) {
+                    let cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    cell.onclick = handleCellClick;
+                    cell.oncontextmenu = handleCellRightClick;
+                    document.getElementById('grid').appendChild(cell);
+                    row.push(0);
+                    revealRow.push(false);
+                    flagRow.push(false);
+                }
+                grid.push(row);
+                revealed.push(revealRow);
+                flagged.push(flagRow);
+            }
+        }
+
+        function addMines(excludeRow, excludeCol) {
+            let minesPlaced = 0;
+            while (minesPlaced < numMines) {
+                let row = Math.floor(Math.random() * rows);
+                let col = Math.floor(Math.random() * cols);
+                if ((row !== excludeRow || col !== excludeCol) && grid[row][col] !== 'M') {
+                    grid[row][col] = 'M';
+                    minesPlaced++;
+                }
+            }
+        }
+
+        function handleCellClick(event) {
+            let row = parseInt(event.target.dataset.row);
+            let col = parseInt(event.target.dataset.col);
+            if (firstClick) {
+                addMines(row, col);
+                firstClick = false;
+                startTime = new Date().getTime();
+                timerInterval = setInterval(updateTimer, 1000);
+            }
+            if (event.shiftKey) {
+                revealAdjacent(row, col);
+            } else {
+                reveal(row, col);
+            }
+        }
+
+        function handleCellRightClick(event) {
+            event.preventDefault();
+            let row = parseInt(event.target.dataset.row);
+            let col = parseInt(event.target.dataset.col);
+            if (!revealed[row][col]) {
+                flagged[row][col] = !flagged[row][col];
+                updateGrid();
+            }
+        }
+
+        function reveal(row, col) {
+            if (row < 0 || row >= rows || col < 0 || col >= cols || revealed[row][col] || flagged[row][col]) {
+                return;
+            }
+
+            revealed[row][col] = true;
+
+            if (grid[row][col] === 'M') {
+                clearInterval(timerInterval);
+                alert('Game Over');
+                revealAll();
+                return;
+            } else {
+                let minesAround = countMines(row, col);
+                if (minesAround === 0) {
+                    for (let i = -1; i <= 1; i++) {
+                        for (let j = -1; j <= 1; j++) {
+                            reveal(row + i, col + j);
+                        }
+                    }
+                }
+            }
+
+            updateGrid();
+            checkWin();
+        }
+
+        function revealAdjacent(row, col) {
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    reveal(row + i, col + j);
+                }
+            }
+        }
+
+        function countMines(row, col) {
+            let count = 0;
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (row + i >= 0 && row + i < rows && col + j >= 0 && col + j < cols) {
+                        if (grid[row + i][col + j] === 'M') {
+                            count++;
+                        }
+                    }
+                }
+            }
+            return count;
+        }
+
+        function revealAll() {
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    revealed[i][j] = true;
+                }
+            }
+            updateGrid();
+        }
+
+        function checkWin() {
+            let unrevealedCells = 0;
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    if (!revealed[i][j] && grid[i][j] !== 'M') {
+                        unrevealedCells++;
+                    }
+                }
+            }
+            if (unrevealedCells === 0) {
+                clearInterval(timerInterval);
+                alert('You Win!');
+            }
+        }
+
+        function updateGrid() {
+            let cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                let row = parseInt(cell.dataset.row);
+                let col = parseInt(cell.dataset.col);
+                if (revealed[row][col]) {
+                    if (grid[row][col] === 'M') {
+                        cell.textContent = '💣';
+                    } else {
+                        let minesAround = countMines(row, col);
+                        cell.textContent = minesAround === 0 ? '' : minesAround;
+                        if (minesAround === 0) {
+                            cell.classList.add('revealed-empty');
+                        }
+                    }
+                } else {
+                    cell.textContent = '';
+                }
+                if (flagged[row][col]) {
+                    cell.classList.add('flagged');
+                } else {
+                    cell.classList.remove('flagged');
+                }
+            });
+        }
+
+        modeSelect.addEventListener('change', function () {
+            if (modeSelect.value === 'custom') {
+                customOptions.style.display = 'block';
+            } else {
+                customOptions.style.display = 'none';
+            }
+        });
+
+        function updateTimer() {
+            elapsedTime = Math.floor((new Date().getTime() - startTime) / 1000);
+            timerSpan.textContent = 'Time: ' + elapsedTime + 's';
+            timerSpan.style.display = 'inline';
+        }
+
+        startGame();
+    </script>
+</body>
+</html>
